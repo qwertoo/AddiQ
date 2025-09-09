@@ -1,0 +1,133 @@
+#new try
+
+import time
+from datetime import datetime
+import board
+import adafruit_dht
+import smbus2
+import bme280
+import sys
+from gpiozero import PWMOutputDevice
+
+# --- Setup I2C and BME280 ---
+port = 1
+address1 = 0x76
+bus = smbus2.SMBus(port)
+bme280.load_calibration_params(bus, address1)
+
+# --- Setup DHT22 sensors ---
+dhtPins = [board.D18, board.D23, board.D24, board.D25, board.D12]  # BCM pins
+dhtSensors = [adafruit_dht.DHT22(pin) for pin in dhtPins]
+
+# --- Setup PWM Fan on GPIO13 (Pin 33) ---
+fanPin = 13  # BCM
+targetTemp = 35.0  # °C target
+maxTempDiff = 0.1  # °C above target for 100% fan
+fan_pwm = PWMOutputDevice(fanPin, frequency=1000)
+fan_pwm.value = 0.0  # Fan initially off
+
+# --- Logging setup ---
+print("Press Ctrl+C to save and stop the logging")
+default = time.strftime("log_%Y%m%d_%H%M%S.txt")
+logfile_name = sys.argv[1] if len(sys.argv) == 2 else default
+
+output_file = open(logfile_name, "a+")
+output_file.write(time.strftime("%y.%m.%d %H:%M.%S") + "\n")
+output_file.write(f"Target temp: {targetTemp}°C\n")
+output_file.write(f"max. temp. diff.: {maxTempDiff}°C\n")
+
+count = 0
+interval = 6  # seconds between measurements
+duration = 25200  # 7 hours in seconds
+
+# --- Function to safely read DHT22 with retries ---
+def read_dht22(sensor, max_attempts=3):
+    for attempt in range(max_attempts):
+        try:
+            temperature = sensor.temperature
+            humidity = sensor.humidity
+            if temperature is None or humidity is None:
+                raise RuntimeError("Invalid reading")
+            return temperature, humidity
+        except RuntimeError as e:
+            print(f"DHT22 read error (attempt {attempt+1}): {e}")
+            time.sleep(1)  # wait before retry
+    return None, None  # all attempts failed
+
+def set_fan_speed(temp_avg):
+    """Proportional control for fan based on average temp of DHT22 #2-4."""
+    if temp_avg is None:
+        fan_pwm.value = 0.0
+        return
+
+    diff = temp_avg - targetTemp
+    if diff <= 0:
+        duty = 0.0
+    else:
+        duty = min(diff / maxTempDiff + 0.15, 1.0)  # 0.0–1.0 for gpiozero
+    fan_pwm.value = duty
+    print(f"Fan speed set to {duty*100:.0f}% for avg temp {temp_avg:.2f}°C")
+
+try:
+    start_time = time.time()
+    prevTime = start_time
+
+    while time.time() - start_time < duration:
+        currentTime = time.time()
+        if currentTime - prevTime >= interval:
+            prevTime = currentTime
+
+            temps = []
+            hums = []
+
+            # --- Read all DHT22 sensors ---
+            for i, sensor in enumerate(dhtSensors):
+                temp, hum = read_dht22(sensor)
+                temps.append(temp)
+                hums.append(hum)
+
+            # --- Read BME280 ---
+            try:
+                bme_data = bme280.sample(bus, address1)
+                bme_temp = bme_data.temperature
+                bme_hum = bme_data.humidity
+                bme_press = bme_data.pressure
+            except Exception as e:
+                print(f"BME280 read error: {e}")
+                bme_temp = bme_hum = bme_press = None
+
+            # --- Fan Control ---
+            valid_temps = [t for t in [temps[1], temps[2], temps[3]] if t is not None]
+            avg_temp = sum(valid_temps) / len(valid_temps) if valid_temps else None
+            set_fan_speed(avg_temp)
+
+            # --- Format output line ---
+            line = "| Temp(DHT22): " + ";".join(f"{t:.2f}" if t is not None else "NaN" for t in temps)
+            line += " | Hum(DHT22): " + ";".join(f"{h:.2f}" if h is not None else "NaN" for h in hums)
+            if avg_temp is not None:
+                line += f" | AvgTemp(2-4): {avg_temp:.2f} | Fan: {fan_pwm.value*100:.0f}%"
+            #if bme_temp is not None:
+            #   line += f" | BME280 Temp: {bme_temp:.2f}°C Hum: {bme_hum:.2f}% Press: {bme_press:.2f}hPa"
+
+            timeNow = time.strftime("%X")
+            outputline = f"{timeNow} {line}\n"
+
+            if line.strip():
+                print(outputline, end="")
+                output_file.write(outputline)
+                count += 1
+            if count >= 10:
+                output_file.close()
+                output_file = open(logfile_name, "a+")
+                count = 0
+
+        # Short sleep to prevent 100% CPU usage
+        time.sleep(0.1)
+
+except KeyboardInterrupt:
+    print("\nMonitoring stopped by user.")
+
+finally:
+    fan_pwm.value = 0.0
+    output_file.close()
+    print(f"Logging stopped after {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
