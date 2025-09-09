@@ -1,0 +1,105 @@
+/* sensor 01 offsets: 
+
+	XAccel			YAccel				ZAccel			XGyro			YGyro			ZGyro
+ [-1687,-1686] --> [-2,20]	[-1195,-1194] --> [-1,16]	[855,856] --> [16376,16395]	[156,157] --> [0,1]	[-30,-29] --> [0,3]	[98,99] --> [0,3]
+ [-1687,-1687] --> [-2,3]	[-1195,-1194] --> [-1,16]	[855,856] --> [16378,16395]	[156,157] --> [0,1]	[-30,-29] --> [-1,3]	[98,99] --> [0,3]
+-1635.00000,	-1180.00000,	854.00000,	154.00000,	-30.00000,	95.00000
+
+ */
+#include <Wire.h>
+#include <MPU6050.h>
+
+MPU6050 mpu;
+
+int oldTime = 0;
+int currentTime = 0;
+
+// Offsets for accelerometer
+int16_t ax_offset = 0, ay_offset = 0, az_offset = 0;
+
+void calibrateAccelerometer() {
+    int32_t ax_sum = 0, ay_sum = 0, az_sum = 0;
+    const int samples = 1000; // Number of samples for calibration
+
+    Serial.println("Calibrating accelerometer...");
+
+    for (int i = 0; i < samples; i++) {
+        int16_t ax, ay, az;
+        mpu.getAcceleration(&ax, &ay, &az);
+
+        ax_sum += ax;
+        ay_sum += ay;
+        az_sum += az;
+
+        delay(2); // Small delay between samples
+    }
+
+    // Calculate average offsets
+    ax_offset = ax_sum / samples;
+    ay_offset = ay_sum / samples;
+    az_offset = (az_sum / samples); // - 16384 Subtract gravity (1g = 16384 for MPU6050)
+
+    Serial.println("Calibration complete!");
+    Serial.print("Offsets: ");
+    Serial.print("ax: "); Serial.print(ax_offset); Serial.print(", ");
+    Serial.print("ay: "); Serial.print(ay_offset); Serial.print(", ");
+    Serial.print("az: "); Serial.println(az_offset);
+}
+
+void setup() {
+    Serial.begin(2000000);
+    Wire.begin(21, 22);  // SDA on GPIO21, SCL on GPIO22
+    mpu.initialize();
+
+    if (!mpu.testConnection()) {
+        Serial.println("MPU6050 connection failed!");
+        while (1);
+    }
+    Serial.println("MPU6050 connected!");
+
+        // Perform accelerometer calibration
+    calibrateAccelerometer();
+    
+    delay(1000);
+    Serial.println("Starting accelerometer test in 5 seconds...");
+    delay(2000);
+    Serial.println("Starting accelerometer test in 3 Seconds");
+    delay(1000);
+    Serial.println("Starting accelerometer test in 2 Seconds");
+    delay(1000);
+    Serial.println("Starting accelerometer test in 1 Seconds");
+    delay(1000);
+    Serial.println("Start!");
+    Serial.print("Accel: ax,ay,az,microseconds");
+}
+
+
+void loop() {
+    int16_t ax, ay, az, gx, gy, gz;
+    
+    mpu.getAcceleration(&ax, &ay, &az);
+   /* ax=ax-1648;
+    ay=ay-1210;
+    az=az-1023;
+
+    */
+    
+    //*mpu.getRotation(&gx, &gy, &gz);
+
+ 
+    Serial.print(ax-ax_offset); Serial.print(", ");
+    Serial.print(ay-ay_offset); Serial.print(", ");
+    Serial.print(az-az_offset); Serial.print(", ");
+    currentTime=micros();
+    Serial.println(currentTime-oldTime); 
+    oldTime = currentTime;
+
+    
+    /*Serial.print("Gyro: ");
+    Serial.print(gx); Serial.print(", ");
+    Serial.print(gy); Serial.print(", ");
+    Serial.println(gz);
+    */
+
+    
+}
