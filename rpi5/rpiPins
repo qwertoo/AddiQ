@@ -1,0 +1,31 @@
+pinliste Raspi Pi 5
+
+Temp: 
+
+#DHT22 
+
+pin 12 GPIO18
+pin 16 GPIO23
+pin 18 GPIO24
+pin 22 GPIO25
+pin 32 GPIO12
+
+#BME280
+I²C
+pin 3 GPIO2 (SDA)
+pin 5 GPIO3 (SCL)
+
+
+For this sensor the I2C address is 0x77 by default but can be changed to
+0x76 if the SD0 pin of the sensor is connected to GND.
+I2C address: 0x77
+I2C address: 0x76
+
+# pwm Fan1
+
+pin 33 GPIO19
+
+# Licht
+//Data → GPIO18 (Pin 12), already used
+GPIO12 (Pin 32) → PWM0 //test!
+
