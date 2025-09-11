@@ -15,7 +15,10 @@ I²C
 pin 3 GPIO2 (SDA)
 pin 5 GPIO3 (SCL)
 
+to do: BME680
+spi!
 
+i2c
 For this sensor the I2C address is 0x77 by default but can be changed to
 0x76 if the SD0 pin of the sensor is connected to GND.
 I2C address: 0x77
